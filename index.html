@@ -125,6 +125,49 @@
             return scheduleRange.weekends.includes(day) ? scheduleRange[shift] : scheduleRange[`${shift}Weekday`];
         }
 
+        function toggleStaffForShift(day, shift, staffName) {
+            const staffMember = staff.find(s => s.name === staffName);
+            if (!staffMember) {
+                console.error(`Staff member ${staffName} not found`);
+                return;
+            }
+
+            // Check if staff is already assigned to any shift on this day
+            const currentShift = ['morning', 'afternoon', 'night'].find(s => schedule[day][s].includes(staffName));
+
+            if (currentShift) {
+                // Remove from current shift
+                schedule[day][currentShift] = schedule[day][currentShift].filter(name => name !== staffName);
+            }
+
+            // If toggling to a new shift (not just removing)
+            if (shift !== currentShift) {
+                if (canAssignStaff(staffName, day, shift)) {
+                    if (schedule[day][shift].length < getMaxStaff(day, shift)) {
+                        schedule[day][shift].push(staffName);
+                    } else {
+                        alert(`Maximum staff limit reached for ${shift} shift. Cannot add ${staffName}.`);
+                        return;
+                    }
+                } else {
+                    alert(`Cannot assign ${staffName} to ${shift} shift due to constraints.`);
+                    return;
+                }
+            }
+
+            updateAllShiftsForDay(day);
+            updateStats();
+        }
+
+        function updateAllShiftsForDay(day) {
+            ['morning', 'afternoon', 'night'].forEach(shift => {
+                updateSelectedStaff(day, shift);
+                updateProgressBar(day, shift);
+            });
+            updateStaffAvailability(day);
+            updateSupervisorAvailability(day);
+        }
+
         function displaySchedule() {
             const scheduleDiv = document.getElementById('schedule');
             let html = '<table class="table table-bordered"><tr><th>Date</th><th>7AM to 2PM</th><th>12PM to 7PM</th><th>7PM TO 7AM</th></tr>';
@@ -142,13 +185,14 @@
                         html += `<td>
                             <input type="number" class="form-control form-control-sm shift-count" id="count-${day}-${shift}" value="${getMaxStaff(day, shift)}" min="0" max="${getMaxStaff(day, shift)}">
                             <span class="badge bg-primary" id="current-${day}-${shift}">0</span>/${getMaxStaff(day, shift)}
-                            <select class="form-select form-select-sm staff-select" multiple="multiple" data-day="${day}" data-shift="${shift}">
-                                ${staff.map(s => `<option value="${s.name}">${s.name}</option>`).join('')}
-                            </select>
                             <select class="form-select form-select-sm supervisor-select" data-day="${day}" data-shift="${shift}">
                                 <option value="">Select Supervisor</option>
                                 ${staff.filter(s => s.role === 's' && (isNight ? s.name !== 'Olayemi' && s.name !== 'Yetunde' : true))
                                     .map(s => `<option value="${s.name}">${s.name}</option>`).join('')}
+                            </select>
+                            <select class="form-select form-select-sm staff-toggle" data-day="${day}" data-shift="${shift}">
+                                <option value="">Toggle Staff</option>
+                                ${staff.map(s => `<option value="${s.name}">${s.name}</option>`).join('')}
                             </select>
                             <div class="progress mt-2">
                                 <div class="progress-bar" id="progress-${day}-${shift}" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
@@ -163,21 +207,14 @@
             html += '</table>';
             scheduleDiv.innerHTML = html;
 
-            $('.staff-select').select2({
-                width: '100%',
-                placeholder: 'Select staff',
-                closeOnSelect: false
-            });
-
-            $('.staff-select').on('change', function() {
+            $('.staff-toggle').on('change', function() {
                 const day = $(this).data('day');
                 const shift = $(this).data('shift');
-                const selectedStaff = $(this).val();
-                schedule[day][shift] = selectedStaff;
-                updateStats();
-                updateProgressBar(day, shift);
-                updateSelectedStaff(day, shift);
-                updateStaffAvailability(day);
+                const staffName = $(this).val();
+                if (staffName) {
+                    toggleStaffForShift(day, shift, staffName);
+                }
+                $(this).val(''); // Reset dropdown
             });
 
             $('.supervisor-select').on('change', function() {
@@ -199,13 +236,19 @@
         }
 
         function setSupervisor(day, shift, supervisorName) {
-            const currentStaff = schedule[day][shift];
-            const supervisorIndex = currentStaff.findIndex(name => staff.find(s => s.name === name).role === 's');
-            if (supervisorIndex !== -1) {
-                currentStaff.splice(supervisorIndex, 1);
+            if (!schedule[day] || !schedule[day][shift]) return;
+
+            schedule[day][shift] = schedule[day][shift].filter(name => name !== supervisorName);
+            schedule[day][shift].unshift(supervisorName);
+
+            const maxStaff = getMaxStaff(day, shift);
+            if (schedule[day][shift].length > maxStaff) {
+                schedule[day][shift] = schedule[day][shift].slice(0, maxStaff);
             }
-            currentStaff.unshift(supervisorName);
+
             updateSelectedStaff(day, shift);
+            updateSupervisorAvailability(day);
+            updateStats();
         }
 
         function updateSelectedStaff(day, shift) {
@@ -214,9 +257,10 @@
             if (selectedStaff.length > 0) {
                 selectedStaffDiv.innerHTML = selectedStaff.map((name, index) => {
                     const staffMember = staff.find(s => s.name === name);
-                    const isOnLeave = staffMember.leaveDays.includes(day);
-                    const isStayover = staffMember.stayoverDays.includes(day);
-                    const isOff = staffMember.offDays.includes(day);
+                    if (!staffMember) return '';
+                    const isOnLeave = staffMember.leaveDays && staffMember.leaveDays.includes(day);
+                    const isStayover = staffMember.stayoverDays && staffMember.stayoverDays.includes(day);
+                    const isOff = staffMember.offDays && staffMember.offDays.includes(day);
                     let className = '';
                     if (isOnLeave) className = 'on-leave';
                     else if (isStayover) className = 'stayover';
@@ -251,7 +295,7 @@
                 ['morning', 'afternoon', 'night'].forEach(shift => {
                     day[shift].forEach(name => {
                         const staffMember = staff.find(s => s.name === name);
-                        if (staffMember && !staffMember.leaveDays.includes(index) && !staffMember.offDays.includes(index)) {
+                        if (staffMember && !(staffMember.leaveDays && staffMember.leaveDays.includes(index)) && !(staffMember.offDays && staffMember.offDays.includes(index))) {
                             staffMember.workDays++;
                             if (shift === 'night') staffMember.nightShifts++;
                             if (shift === 'morning') staffMember.morningShifts++;
@@ -274,7 +318,6 @@
             });
 
             displayStats();
-            checkWeekLock();
         }
 
         function displayStats() {
@@ -297,15 +340,16 @@
                     <td>${s.morningShifts}</td>
                     <td>${s.afternoonShifts}</td>
                     <td>${s.weekendsOff.map(w => `W${w}`).join(', ')}</td>
-                    <td>${s.leaveDays.length}</td>
-                    <td>${s.stayoverDays.length}</td>
-                    <td>${s.offDays.length}</td>
+                    <td>${s.leaveDays ? s.leaveDays.length : 0}</td>
+                    <td>${s.stayoverDays ? s.stayoverDays.length : 0}</td>
+                    <td>${s.offDays ? s.offDays.length : 0}</td>
                     <td class="alert">${alerts.join(', ')}</td>
-                    <td><button class="btn btn-sm btn-danger reset-staff-btn" onclick="resetStaff('${s.name}')">Reset</button></td>
+                    <td><button class="btn btn-sm btn-danger reset-staff-btn" data-staff="${s.name}">Reset</button></td>
                 </tr>`;
             });
             statsHtml += '</table>';
             statsDiv.innerHTML = statsHtml;
+            updateResetButtons();
         }
 
         function checkWeekLock() {
@@ -396,7 +440,8 @@
             const staffMember = staff.find(s => s.name === staffName);
             if (!staffMember) return false;
 
-            if (staffMember.leaveDays.includes(day) || staffMember.offDays.includes(day)) return false;
+            if (staffMember.leaveDays && staffMember.leaveDays.includes(day)) return false;
+            if (staffMember.offDays && staffMember.offDays.includes(day)) return false;
 
             if (shift === 'night') {
                 if (staffMember.name === 'Olayemi' || staffMember.name === 'Yetunde') return false;
@@ -409,15 +454,13 @@
                 if (prevDay.night.includes(staffName) && (shift === 'morning' || shift === 'afternoon')) return false;
             }
 
-            if (schedule[day].morning.includes(staffName) || schedule[day].afternoon.includes(staffName) || schedule[day].night.includes(staffName)) return false;
-
-            if (staffMember.stayoverDays.includes(day) && shift === 'afternoon') {
+            if (staffMember.stayoverDays && staffMember.stayoverDays.includes(day) && shift === 'afternoon') {
                 if (day < scheduleRange.totalDays - 1 && !schedule[day + 1].morning.includes(staffName)) {
                     schedule[day + 1].morning.push(staffName);
                 }
                 return true;
             }
-            if (staffMember.stayoverDays.includes(day - 1) && shift === 'morning') return true;
+            if (staffMember.stayoverDays && staffMember.stayoverDays.includes(day - 1) && shift === 'morning') return true;
 
             if (staffMember.preferences) {
                 const prefs = staffMember.preferences.toLowerCase();
@@ -451,39 +494,76 @@
         }
 
         function resetStaff(staffName) {
+            const staffMember = staff.find(s => s.name === staffName);
+            if (!staffMember) {
+                console.error(`Staff member ${staffName} not found`);
+                return;
+            }
+
+            const manualAssignments = [];
+
             for (let day = 0; day < scheduleRange.totalDays; day++) {
                 ['morning', 'afternoon', 'night'].forEach(shift => {
                     if (schedule[day] && Array.isArray(schedule[day][shift])) {
-                        schedule[day][shift] = schedule[day][shift].filter(name => name !== staffName);
+                        const index = schedule[day][shift].indexOf(staffName);
+                        if (index !== -1) {
+                            if (index === 0 && staffMember.role === 's') {
+                                manualAssignments.push({day, shift});
+                            } else {
+                                schedule[day][shift].splice(index, 1);
+                            }
+                        }
                     }
                 });
             }
 
-            const staffMember = staff.find(s => s.name === staffName);
-            if (staffMember) {
-                staffMember.workDays = 0;
-                staffMember.nightShifts = 0;
-                staffMember.morningShifts = 0;
-                staffMember.afternoonShifts = 0;
+            staffMember.workDays = staffMember.nightShifts = staffMember.morningShifts = staffMember.afternoonShifts = 0;
+            staffMember.weekendsOff = [];
 
-                const maxWorkDays = scheduleRange.totalDays / 7 === 4 ? 20 : 25;
-                let attempts = 0;
-                while (staffMember.workDays < maxWorkDays && attempts < 1000) {
-                    const day = Math.floor(Math.random() * scheduleRange.totalDays);
-                    const shift = ['morning', 'afternoon', 'night'][Math.floor(Math.random() * 3)];
-                    if (canAssignStaff(staffName, day, shift) && schedule[day][shift].length < getMaxStaff(day, shift)) {
-                        schedule[day][shift].push(staffName);
-                        staffMember.workDays++;
-                        if (shift === 'night') staffMember.nightShifts++;
-                        if (shift === 'morning') staffMember.morningShifts++;
-                        if (shift === 'afternoon') staffMember.afternoonShifts++;
-                    }
-                    attempts++;
+            const maxWorkDays = scheduleRange.totalDays / 7 === 4 ? 20 : 25;
+            let attempts = 0;
+            const maxAttempts = scheduleRange.totalDays * 3;
+
+            while (staffMember.workDays < maxWorkDays && attempts < maxAttempts) {
+                const day = Math.floor(Math.random() * scheduleRange.totalDays);
+                const shift = ['morning', 'afternoon', 'night'][Math.floor(Math.random() * 3)];
+                
+                if (canAssignStaff(staffName, day, shift) && schedule[day][shift].length < getMaxStaff(day, shift)) {
+                    schedule[day][shift].push(staffName);
+                    staffMember.workDays++;
+                    staffMember[shift + 'Shifts']++;
                 }
+                attempts++;
             }
+
+            manualAssignments.forEach(({day, shift}) => {
+                if (!schedule[day][shift].includes(staffName)) {
+                    schedule[day][shift].unshift(staffName);
+                    staffMember.workDays++;
+                    staffMember[shift + 'Shifts']++;
+                }
+            });
 
             updateStats();
             displaySchedule();
+        }
+
+                function optimizedResetStaff(staffName) {
+            return new Promise((resolve) => {
+                setTimeout(() => {
+                    resetStaff(staffName);
+                    resolve();
+                }, 0);
+            });
+        }
+
+        function updateResetButtons() {
+            $('.reset-staff-btn').off('click').on('click', async function() {
+                const staffName = $(this).data('staff');
+                $(this).prop('disabled', true).text('Resetting...');
+                await optimizedResetStaff(staffName);
+                $(this).prop('disabled', false).text('Reset');
+            });
         }
 
         function updateMaxStaff(day, shift, newMax) {
@@ -512,17 +592,23 @@
             const prevDayNightStaff = day > 0 ? new Set(schedule[day - 1].night) : new Set();
 
             ['morning', 'afternoon', 'night'].forEach(shift => {
-                const select = $(`.staff-select[data-day="${day}"][data-shift="${shift}"]`);
+                const select = $(`.staff-toggle[data-day="${day}"][data-shift="${shift}"]`);
                 select.find('option').each(function() {
                     const staffName = $(this).val();
                     const staffMember = staff.find(s => s.name === staffName);
-                    const isOnLeave = staffMember.leaveDays.includes(day);
-                    const isOff = staffMember.offDays.includes(day);
-                    const isAssigned = assignedStaff.has(staffName);
-                    const workedNightBefore = prevDayNightStaff.has(staffName);
-                    $(this).prop('disabled', isAssigned || isOnLeave || isOff || (shift !== 'night' && workedNightBefore));
+                    if (staffMember) {
+                        const isOnLeave = staffMember.leaveDays && staffMember.leaveDays.includes(day);
+                        const isOff = staffMember.offDays && staffMember.offDays.includes(day);
+                        const isAssignedToThisShift = schedule[day][shift].includes(staffName);
+                        const workedNightBefore = prevDayNightStaff.has(staffName);
+                        const canBeAssigned = canAssignStaff(staffName, day, shift);
+                        $(this).prop('disabled', isOnLeave || isOff || (shift !== 'night' && workedNightBefore) || !canBeAssigned);
+                        $(this).prop('selected', isAssignedToThisShift);
+                    } else {
+                        $(this).prop('disabled', true);
+                    }
                 });
-                select.select2('destroy').select2();
+                select.val(schedule[day][shift]);
             });
         }
 
@@ -530,14 +616,14 @@
             const assignedSupervisors = new Set();
             ['morning', 'afternoon', 'night'].forEach(shift => {
                 const supervisorName = schedule[day][shift][0];
-                if (supervisorName && staff.find(s => s.name === supervisorName).role === 's') {
+                if (supervisorName && staff.find(s => s.name === supervisorName && s.role === 's')) {
                     assignedSupervisors.add(supervisorName);
                 }
             });
 
             ['morning', 'afternoon', 'night'].forEach(shift => {
                 const select = $(`.supervisor-select[data-day="${day}"][data-shift="${shift}"]`);
-                                select.find('option').each(function() {
+                select.find('option').each(function() {
                     const supervisorName = $(this).val();
                     $(this).prop('disabled', assignedSupervisors.has(supervisorName));
                 });
@@ -560,9 +646,13 @@
         });
 
         $('#generateSchedule').click(function() {
-            initializeSchedule();
-            initializeDatePickers();
-            randomizeStaff();
+            try {
+                initializeSchedule();
+                initializeDatePickers();
+                randomizeStaff();
+            } catch (error) {
+                handleError(error);
+            }
         });
 
         $('#addLeaveBtn').click(function() {
@@ -575,7 +665,10 @@
                 });
                 staffNames.forEach(staffName => {
                     const staffMember = staff.find(s => s.name === staffName);
-                    staffMember.leaveDays = [...new Set([...staffMember.leaveDays, ...leaveDaysArray])];
+                    if (staffMember) {
+                        staffMember.leaveDays = staffMember.leaveDays || [];
+                        staffMember.leaveDays = [...new Set([...staffMember.leaveDays, ...leaveDaysArray])];
+                    }
                 });
                 alert(`Leave added for selected staff`);
                 $('#leaveStaffSelect').val(null).trigger('change');
@@ -592,11 +685,15 @@
             if (staffNames && !isNaN(stayoverCount) && stayoverCount > 0) {
                 staffNames.forEach(staffName => {
                     const staffMember = staff.find(s => s.name === staffName);
-                    const availableDays = Array.from({length: scheduleRange.totalDays - 1}, (_, i) => i)
-                        .filter(day => !staffMember.leaveDays.includes(day) && !staffMember.offDays.includes(day));
-                    const shuffledDays = availableDays.sort(() => 0.5 - Math.random());
-                    const selectedDays = shuffledDays.slice(0, Math.min(stayoverCount, shuffledDays.length));
-                    staffMember.stayoverDays = [...new Set([...staffMember.stayoverDays, ...selectedDays])];
+                    if (staffMember) {
+                        const availableDays = Array.from({length: scheduleRange.totalDays - 1}, (_, i) => i)
+                            .filter(day => !(staffMember.leaveDays && staffMember.leaveDays.includes(day)) && 
+                                          !(staffMember.offDays && staffMember.offDays.includes(day)));
+                        const shuffledDays = availableDays.sort(() => 0.5 - Math.random());
+                        const selectedDays = shuffledDays.slice(0, Math.min(stayoverCount, shuffledDays.length));
+                        staffMember.stayoverDays = staffMember.stayoverDays || [];
+                        staffMember.stayoverDays = [...new Set([...staffMember.stayoverDays, ...selectedDays])];
+                    }
                 });
                 alert(`Stayover shifts added for selected staff`);
                 $('#stayoverStaffSelect').val(null).trigger('change');
@@ -614,7 +711,10 @@
                 const offDay = Math.floor((new Date(offDate) - scheduleRange.startDate) / (1000 * 60 * 60 * 24));
                 staffNames.forEach(staffName => {
                     const staffMember = staff.find(s => s.name === staffName);
-                    staffMember.offDays = [...new Set([...staffMember.offDays, offDay])];
+                    if (staffMember) {
+                        staffMember.offDays = staffMember.offDays || [];
+                        staffMember.offDays = [...new Set([...staffMember.offDays, offDay])];
+                    }
                 });
                 alert(`Time off added for selected staff on ${offDate}`);
                 $('#offStaffSelect').val(null).trigger('change');
@@ -625,12 +725,31 @@
             }
         });
 
-        $('#randomizeBtn').click(randomizeStaff);
-        $('#fixErrorsBtn').click(fixErrors);
+        $('#randomizeBtn').click(function() {
+            try {
+                randomizeStaff();
+            } catch (error) {
+                handleError(error);
+            }
+        });
+
+        $('#fixErrorsBtn').click(function() {
+            try {
+                fixErrors();
+            } catch (error) {
+                handleError(error);
+            }
+        });
+
         $('#lockToggle').change(function() {
             isLocked = this.checked;
             checkWeekLock();
         });
+
+        function handleError(error) {
+            console.error("An error occurred:", error);
+            alert("An error occurred. Please check the console for details.");
+        }
 
         // Set initial date and populate staff dropdowns
         const today = new Date();
@@ -640,14 +759,14 @@
         });
 
         // Initialize the schedule
-        initializeSchedule();
-        initializeDatePickers();
-
-        // Make resetStaff function global so it can be called from HTML
-        window.resetStaff = resetStaff;
+        try {
+            initializeSchedule();
+            initializeDatePickers();
+        } catch (error) {
+            handleError(error);
+        }
     });
     </script>
 </body>
 </html>
 
-                
