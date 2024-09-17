@@ -20,6 +20,7 @@
         .shift-count { width: 50px; }
         .table { background-color: #ffffff; }
         .table-striped tbody tr:nth-of-type(odd) { background-color: rgba(0,0,0,.02); }
+        .week-header { background-color: #FFC0CB; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -62,12 +63,20 @@
                 <button id="addOffDateBtn" class="btn btn-secondary mt-2">Add Time Off</button>
             </div>
         </div>
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label for="weekendOffStaffSelect" class="form-label">Give Weekend Off:</label>
+                <select id="weekendOffStaffSelect" class="form-select"></select>
+                <button id="giveWeekendOffBtn" class="btn btn-secondary mt-2">Give Weekend Off</button>
+            </div>
+        </div>
         <div class="form-check mb-3">
             <input class="form-check-input" type="checkbox" id="lockToggle">
             <label class="form-check-label" for="lockToggle">Enable Strict Mode</label>
         </div>
         <button id="randomizeBtn" class="btn btn-success me-2">Randomize Staff</button>
-        <button id="fixErrorsBtn" class="btn btn-warning">Fix Errors</button>
+        <button id="fixErrorsBtn" class="btn btn-warning me-2">Fix Errors</button>
+        <button id="printScheduleBtn" class="btn btn-info">Print Schedule</button>
         <div id="schedule" class="mt-4 table-responsive"></div>
         <div id="scheduleStats" class="mt-4"></div>
     </div>
@@ -528,7 +537,7 @@
                 const day = Math.floor(Math.random() * scheduleRange.totalDays);
                 const shift = ['morning', 'afternoon', 'night'][Math.floor(Math.random() * 3)];
                 
-                if (canAssignStaff(staffName, day, shift) && schedule[day][shift].length < getMaxStaff(day, shift)) {
+                                if (canAssignStaff(staffName, day, shift) && schedule[day][shift].length < getMaxStaff(day, shift)) {
                     schedule[day][shift].push(staffName);
                     staffMember.workDays++;
                     staffMember[shift + 'Shifts']++;
@@ -548,7 +557,7 @@
             displaySchedule();
         }
 
-                function optimizedResetStaff(staffName) {
+        function optimizedResetStaff(staffName) {
             return new Promise((resolve) => {
                 setTimeout(() => {
                     resetStaff(staffName);
@@ -628,6 +637,108 @@
                     $(this).prop('disabled', assignedSupervisors.has(supervisorName));
                 });
             });
+        }
+
+        function giveWeekendOff(staffName) {
+            const staffMember = staff.find(s => s.name === staffName);
+            if (!staffMember) return;
+
+            const availableWeekends = Array.from({length: scheduleRange.totalDays / 7}, (_, i) => i)
+                .filter(week => !staffMember.weekendsOff.includes(week + 1));
+
+            if (availableWeekends.length > 0) {
+                const randomWeekend = availableWeekends[Math.floor(Math.random() * availableWeekends.length)];
+                const fridayIndex = randomWeekend * 7 + 4;
+                const sundayIndex = randomWeekend * 7 + 6;
+
+                for (let day = fridayIndex; day <= sundayIndex; day++) {
+                    ['morning', 'afternoon', 'night'].forEach(shift => {
+                        schedule[day][shift] = schedule[day][shift].filter(name => name !== staffName);
+                    });
+                }
+
+                staffMember.weekendsOff.push(randomWeekend + 1);
+                alert(`Weekend off given to ${staffName} for Week ${randomWeekend + 1}`);
+                updateStats();
+                displaySchedule();
+            } else {
+                alert(`No available weekends to give off to ${staffName}`);
+            }
+        }
+
+        function printSchedule() {
+            const printWindow = window.open('', '_blank');
+            const startDate = scheduleRange.startDate;
+            const endDate = scheduleRange.endDate;
+            const monthYear = startDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+            
+            let html = `
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>${monthYear} Staff Schedule</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+                        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+                        th, td { border: 1px solid #000; padding: 8px; text-align: left; font-size: 12px; }
+                        th { background-color: #f2f2f2; }
+                        .week-header { background-color: #FFC0CB; font-weight: bold; }
+                        .supervisor { font-weight: bold; color: red; }
+                    </style>
+                </head>
+                <body>
+                    <h1>${monthYear} Staff Schedule</h1>
+                    <table>
+            `;
+
+            for (let week = 0; week < scheduleRange.totalDays / 7; week++) {
+                const weekStart = new Date(startDate.getTime() + week * 7 * 24 * 60 * 60 * 1000);
+                const weekEnd = new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000);
+                
+                html += `
+                    <tr class="week-header">
+                        <th colspan="4">${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} / ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</th>
+                    </tr>
+                    <tr>
+                        <th>DAYS</th>
+                        <th>7AM to 2PM</th>
+                        <th>12PM to 7PM</th>
+                        <th>7PM TO 7AM</th>
+                    </tr>
+                `;
+
+                for (let day = week * 7; day < (week + 1) * 7 && day < scheduleRange.totalDays; day++) {
+                    const currentDate = new Date(startDate);
+                    currentDate.setDate(startDate.getDate() + day);
+                    const dayOfWeek = currentDate.toLocaleDateString('en-US', { weekday: 'long' });
+
+                    html += `<tr>
+                        <td>${dayOfWeek}</td>
+                    `;
+
+                    ['morning', 'afternoon', 'night'].forEach(shift => {
+                        const shiftStaff = schedule[day][shift];
+                        const supervisor = shiftStaff.find(name => staff.find(s => s.name === name && s.role === 's'));
+                        const otherStaff = shiftStaff.filter(name => name !== supervisor);
+
+                        html += `<td>${supervisor ? `<span class="supervisor">${supervisor}(s)</span>, ` : ''}${otherStaff.join(', ')}</td>`;
+                    });
+
+                    html += '</tr>';
+                }
+            }
+
+            html += `
+                    </table>
+                </body>
+                </html>
+            `;
+
+            printWindow.document.write(html);
+            printWindow.document.close();
+            printWindow.print();
         }
 
         function initializeDatePickers() {
@@ -725,6 +836,15 @@
             }
         });
 
+        $('#giveWeekendOffBtn').click(function() {
+            const staffName = $('#weekendOffStaffSelect').val();
+            if (staffName) {
+                giveWeekendOff(staffName);
+            } else {
+                alert('Please select a staff member');
+            }
+        });
+
         $('#randomizeBtn').click(function() {
             try {
                 randomizeStaff();
@@ -741,6 +861,8 @@
             }
         });
 
+        $('#printScheduleBtn').click(printSchedule);
+
         $('#lockToggle').change(function() {
             isLocked = this.checked;
             checkWeekLock();
@@ -755,7 +877,7 @@
         const today = new Date();
         $('#startDate').val(today.toISOString().split('T')[0]);
         staff.forEach(s => {
-            $('#leaveStaffSelect, #stayoverStaffSelect, #offStaffSelect').append(new Option(s.name, s.name, false, false));
+            $('#leaveStaffSelect, #stayoverStaffSelect, #offStaffSelect, #weekendOffStaffSelect').append(new Option(s.name, s.name, false, false));
         });
 
         // Initialize the schedule
@@ -769,4 +891,3 @@
     </script>
 </body>
 </html>
-
