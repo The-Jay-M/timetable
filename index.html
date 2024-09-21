@@ -36,13 +36,14 @@
             max-height: 80vh;
             overflow-y: auto;
         }
-        .highlight { background-color: yellow; }
+        .highlight { background-color: #00ff00; }
+        .staff-profile-modal .modal-dialog { max-width: 800px; }
     </style>
 </head>
 <body>
     <div class="container-fluid mt-4 p-4">
         <h1>Dynamic Staff Schedule</h1>
-      <button id="startTourBtn" class="btn btn-info me-2">Start Tour</button>
+        <button id="startTourBtn" class="btn btn-info me-2">Start Tour</button>
         <div class="row mb-3">
             <div class="col-md-3">
                 <label for="startDate" class="form-label">Start Date:</label>
@@ -100,7 +101,9 @@
         <button id="exportCsvBtn" class="btn btn-secondary me-2">Export CSV</button>
         <button id="importCsvBtn" class="btn btn-secondary me-2">Import CSV</button>
         <input type="file" id="csvFileInput" accept=".csv" style="display: none;">
-        <button id="captureScheduleBtn" class="btn btn-primary">Capture Schedule</button>
+        <button id="captureScheduleBtn" class="btn btn-primary me-2">Capture Schedule</button>
+        <button id="captureTableBtn" class="btn btn-primary me-2">Capture Table</button>
+        <button id="addStaffBtn" class="btn btn-success me-2">Add New Staff</button>
         <div id="schedule" class="mt-4 table-responsive"></div>
         <div id="scheduleStats" class="mt-4"></div>
     </div>
@@ -111,6 +114,67 @@
         <div id="previewContent"></div>
     </div>
 
+    <!-- Add New Staff Modal -->
+    <div class="modal fade" id="addStaffModal" tabindex="-1" aria-labelledby="addStaffModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addStaffModalLabel">Add New Staff</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addStaffForm">
+                        <div class="mb-3">
+                            <label for="newStaffName" class="form-label">Name</label>
+                            <input type="text" class="form-control" id="newStaffName" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="newStaffGender" class="form-label">Gender</label>
+                            <select class="form-select" id="newStaffGender" required>
+                                <option value="M">Male</option>
+                                <option value="F">Female</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="newStaffRole" class="form-label">Role</label>
+                            <select class="form-select" id="newStaffRole" required>
+                                <option value="n">Normal</option>
+                                <option value="s">Supervisor</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="newStaffPreferences" class="form-label">Preferences</label>
+                            <textarea class="form-control" id="newStaffPreferences" rows="3"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="saveNewStaff">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Staff Profile Modal -->
+    <div class="modal fade staff-profile-modal" id="staffProfileModal" tabindex="-1" aria-labelledby="staffProfileModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="staffProfileModalLabel">Staff Profile</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="staffProfileContent"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-danger" id="removeStaffBtn">Remove Staff</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
@@ -118,11 +182,12 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
     <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/intro.js/5.1.0/intro.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
     <script>
     $(document).ready(function() {
-        const staffData = `Abiodun,F,n;Adams,M,s;Adeleke,M,n;Adelodun,M,n,likes more nights, afternoon next day morning;Adenike,F,s;Alimat,F,n;Basirat,F,n;Bolaji,M,s;Celestina,F,n,no nights;Dara,F,s;David,M,s;Esther,F,n;Etim,M,n,try to avoid Sunday mornings;Gabriel,M,s,soon leaving, dont suggest;Gideon,M,n;Godwin,M,s;James,M,n,likes more nights, afternoon next day morning;Jerry,M,n,likes more nights, afternoon next day morning;Joshua,M,n,afternoons more, no nights;Kamilah,F,s;Kemi,F,n;Marho,F,n,likes more nights, afternoon next day morning, no Sunday mornings;Marvellous,F,n;Michael,M,n,likes nights, afternoons, it changes;Miracle,F,n,likes nights;Olayemi,F,s,no nights, mostly workdays;Opeyemi,M,s;Osato,F,n,mornings, not too much nights;Samuel,M,n;Solomon,M,s,soon leaving, dont suggest;Sophia,F,s;Stephen A.,M,s;Stephen E.,M,s;Tobi,F,s;Tosin,M,n;Wisdom,M,s;Yetunde,F,s,no nights, mostly afternoons;Zainab,F,n,no nights`;
+        let staffData = `Abiodun,F,n;Adams,M,s;Adeleke,M,n;Adelodun,M,n,likes more nights, afternoon next day morning;Adenike,F,s;Alimat,F,n;Basirat,F,n;Bolaji,M,s;Celestina,F,n,no nights;Dara,F,s;David,M,s;Esther,F,n;Etim,M,n,try to avoid Sunday mornings;Gabriel,M,s,soon leaving, dont suggest;Gideon,M,n;Godwin,M,s;James,M,n,likes more nights, afternoon next day morning;Jerry,M,n,likes more nights, afternoon next day morning;Joshua,M,n,afternoons more, no nights;Kamilah,F,s;Kemi,F,n;Marho,F,n,likes more nights, afternoon next day morning, no Sunday mornings;Marvellous,F,n;Michael,M,n,likes nights, afternoons, it changes;Miracle,F,n,likes nights;Olayemi,F,s,no nights, mostly workdays;Opeyemi,M,s;Osato,F,n,mornings, not too much nights;Samuel,M,n;Solomon,M,s,soon leaving, dont suggest;Sophia,F,s;Stephen A.,M,s;Stephen E.,M,s;Tobi,F,s;Tosin,M,n;Wisdom,M,s;Yetunde,F,s,no nights, mostly afternoons;Zainab,F,n,no nights`;
 
-        const staff = staffData.split(';').map(s => {
+        let staff = staffData.split(';').map(s => {
             const [name, gender, role, ...preferences] = s.split(',');
             return { name, gender, role, preferences: preferences.join(','), workDays: 0, nightShifts: 0, weekendsOff: [], morningShifts: 0, afternoonShifts: 0, leaveDays: [], stayoverDays: [], offDays: [] };
         });
@@ -308,7 +373,7 @@
                     else if (isStayover) className = 'stayover';
                     else if (isOff) className = 'text-danger';
                     else if (index === 0) className = 'supervisor';
-                    return `<span class="${className}">${name}</span>`;
+                    return `<span class="${className}" onclick="showStaffProfile('${name}')">${name}</span>`;
                 }).join(', ');
             } else {
                 selectedStaffDiv.textContent = '';
@@ -376,7 +441,7 @@
                 if (s.weekendsOff.length < requiredWeekendsOff) alerts.push(`Less than ${requiredWeekendsOff} weekends off`);
 
                 statsHtml += `<tr>
-                    <td>${s.name}</td>
+                    <td><a href="#" onclick="showStaffProfile('${s.name}')">${s.name}</a></td>
                     <td>${s.workDays}</td>
                     <td>${s.nightShifts}</td>
                     <td>${s.morningShifts}</td>
@@ -458,8 +523,7 @@
             const index = schedule[day][shift].findIndex(name => name === supervisorName);
             if (index === -1) {
                 schedule[day][shift].pop();
-                schedule[day][shift].unshift(supervisorName);
-            } else if (index !== 0) {
+                schedule[day][shift].unshift(supervisorName);} else if (index !== 0) {
                 schedule[day][shift].splice(index, 1);
                 schedule[day][shift].unshift(supervisorName);
             }
@@ -525,7 +589,7 @@
                                 staffMember.workDays++;
                                 assigned = true;
                             }
-                          });
+                        });
                     }
                     if (!assigned) break;
                 }
@@ -977,8 +1041,11 @@
                     row.find('td').each(function() {
                         const cell = $(this);
                         const cellText = cell.text();
-                        const highlightedText = cellText.replace(new RegExp(searchTerm, 'gi'), match => `<span class="highlight">${match}</span>`);
-                        cell.html(highlightedText);
+                        if (cellText.toLowerCase().includes(searchTerm)) {
+                            cell.addClass('highlight');
+                        } else {
+                            cell.removeClass('highlight');
+                        }
                     });
                 }
             });
@@ -1001,16 +1068,19 @@
         });
 
         function generateCsvContent() {
-            let csvContent = "Date,Morning,Afternoon,Night\n";
+            let csvContent = "SN,STAFF,,,,OCTOBER 7TH TO 13TH OCTOBER,,,,LEAVE SCHEDULE,,,,,,,\n";
+            csvContent += "1,Olayemi,Staff off this weekend,,.,DAYS,7AM to 2PM,12PM to 7PM,7PM TO 7AM,,,SOC SUMMARY,,,,,\n";
+
             for (let day = 0; day < scheduleRange.totalDays; day++) {
                 const currentDate = new Date(scheduleRange.startDate);
                 currentDate.setDate(scheduleRange.startDate.getDate() + day);
-                const dateStr = currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', weekday: 'short' });
+                const dateStr = currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', weekday: 'long' });
                 const morning = schedule[day].morning.join(', ');
                 const afternoon = schedule[day].afternoon.join(', ');
                 const night = schedule[day].night.join(', ');
-                csvContent += `${dateStr},${morning},${afternoon},${night}\n`;
+                csvContent += `${day + 2},,,,${currentDate.toISOString().split('T')[0]},${dateStr},"${morning}","${afternoon}","${night}",,,,,,,\n`;
             }
+
             return csvContent;
         }
 
@@ -1034,15 +1104,17 @@
         function importCsvData(csvData) {
             const rows = csvData.split('\n');
             rows.shift(); // Remove header row
+            rows.shift(); // Remove second header row
             schedule = [];
             rows.forEach((row, index) => {
                 if (row.trim() !== '') {
-                    const [date, morning, afternoon, night] = row.split(',');
-                    schedule.push({
-                        morning: morning.split(', ').filter(name => name.trim() !== ''),
-                        afternoon: afternoon.split(', ').filter(name => name.trim() !== ''),
-                        night: night.split(', ').filter(name => name.trim() !== '')
-                    });
+                    const columns = row.split(',');
+                    if (columns.length >= 9) {
+                        const morning = columns[6].replace(/"/g, '').split(', ').filter(name => name.trim() !== '');
+                        const afternoon = columns[7].replace(/"/g, '').split(', ').filter(name => name.trim() !== '');
+                        const night = columns[8].replace(/"/g, '').split(', ').filter(name => name.trim() !== '');
+                        schedule.push({ morning, afternoon, night });
+                    }
                 }
             });
             updateStats();
@@ -1058,6 +1130,201 @@
                 link.click();
             });
         });
+
+        // Capture table structure
+        $('#captureTableBtn').click(function() {
+            const tableHtml = generateTableStructure();
+            const blob = new Blob([tableHtml], { type: 'text/html;charset=utf-8;' });
+            const link = document.createElement("a");
+            if (link.download !== undefined) {
+                const url = URL.createObjectURL(blob);
+                link.setAttribute("href", url);
+                link.setAttribute("download", "table_structure.html");
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+        });
+
+        function generateTableStructure() {
+            let html = `
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>Staff Schedule Table Structure</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; }
+                        table { border-collapse: collapse; width: 100%; }
+                        th, td { border: 1px solid black; padding: 8px; text-align: left; }
+                        th { background-color: #f2f2f2; }
+                    </style>
+                </head>
+                <body>
+                    <table>
+                        <tr>
+                            <th>Date</th>
+                            <th>7AM to 2PM</th>
+                            <th>12PM to 7PM</th>
+                            <th>7PM TO 7AM</th>
+                        </tr>
+            `;
+
+            for (let day = 0; day < scheduleRange.totalDays; day++) {
+                const currentDate = new Date(scheduleRange.startDate);
+                currentDate.setDate(scheduleRange.startDate.getDate() + day);
+                html += `
+                    <tr>
+                        <td>${currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', weekday: 'short' })}</td>
+                        <td>${schedule[day].morning.join(', ')}</td>
+                        <td>${schedule[day].afternoon.join(', ')}</td>
+                        <td>${schedule[day].night.join(', ')}</td>
+                    </tr>
+                `;
+            }
+
+            html += `
+                    </table>
+                </body>
+                </html>
+            `;
+
+            return html;
+        }
+
+        // Add new staff
+        $('#addStaffBtn').click(function() {
+            $('#addStaffModal').modal('show');
+        });
+
+        $('#saveNewStaff').click(function() {
+            const name = $('#newStaffName').val();
+            const gender = $('#newStaffGender').val();
+            const role = $('#newStaffRole').val();
+            const preferences = $('#newStaffPreferences').val();
+
+            if (name && gender && role) {
+                const newStaff = {
+                    name,
+                    gender,
+                    role,
+                    preferences,
+                    workDays: 0,
+                    nightShifts: 0,
+                    weekendsOff: [],
+                    morningShifts: 0,
+                    afternoonShifts: 0,
+                    leaveDays: [],
+                    stayoverDays: [],
+                    offDays: []
+                };
+
+                staff.push(newStaff);
+                $('#addStaffModal').modal('hide');
+                $('#addStaffForm')[0].reset();
+                updateStaffDropdowns();
+                alert(`New staff member ${name} added successfully.`);
+            } else {
+                alert('Please fill in all required fields.');
+            }
+        });
+
+        function updateStaffDropdowns() {
+            const dropdowns = $('#leaveStaffSelect, #stayoverStaffSelect, #offStaffSelect, #weekendOffStaffSelect');
+            dropdowns.empty();
+            staff.forEach(s => {
+                dropdowns.append(new Option(s.name, s.name, false, false));
+            });
+            dropdowns.trigger('change');
+        }
+
+       // Show staff profile
+        window.showStaffProfile = function(staffName) {
+            const staffMember = staff.find(s => s.name === staffName);
+            if (staffMember) {
+                const profileContent = generateStaffProfile(staffMember);
+                $('#staffProfileContent').html(profileContent);
+                $('#staffProfileModal').modal('show');
+                $('#removeStaffBtn').data('staff', staffName);
+            }
+        }
+
+        function generateStaffProfile(staffMember) {
+            let html = `
+                <h3>${staffMember.name}</h3>
+                <p><strong>Gender:</strong> ${staffMember.gender}</p>
+                <p><strong>Role:</strong> ${staffMember.role === 's' ? 'Supervisor' : 'Normal'}</p>
+                <p><strong>Preferences:</strong> ${staffMember.preferences || 'None'}</p>
+                <p><strong>Work Days:</strong> ${staffMember.workDays}</p>
+                <p><strong>Night Shifts:</strong> ${staffMember.nightShifts}</p>
+                <p><strong>Morning Shifts:</strong> ${staffMember.morningShifts}</p>
+                <p><strong>Afternoon Shifts:</strong> ${staffMember.afternoonShifts}</p>
+                <p><strong>Weekends Off:</strong> ${staffMember.weekendsOff.map(w => `Week ${w}`).join(', ') || 'None'}</p>
+                <p><strong>Leave Days:</strong> ${staffMember.leaveDays.length}</p>
+                <p><strong>Stayover Days:</strong> ${staffMember.stayoverDays.length}</p>
+                <p><strong>Off Days:</strong> ${staffMember.offDays.length}</p>
+            `;
+
+            // Add a chart to visualize shift distribution
+            html += `
+                <canvas id="shiftDistributionChart" width="400" height="200"></canvas>
+            `;
+
+            return html;
+        }
+
+        $('#staffProfileModal').on('shown.bs.modal', function () {
+            const staffName = $('#removeStaffBtn').data('staff');
+            const staffMember = staff.find(s => s.name === staffName);
+            if (staffMember) {
+                const ctx = document.getElementById('shiftDistributionChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'pie',
+                    data: {
+                        labels: ['Morning', 'Afternoon', 'Night'],
+                        datasets: [{
+                            data: [staffMember.morningShifts, staffMember.afternoonShifts, staffMember.nightShifts],
+                            backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56']
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        title: {
+                            display: true,
+                            text: 'Shift Distribution'
+                        }
+                    }
+                });
+            }
+        });
+
+        // Remove staff
+        $('#removeStaffBtn').click(function() {
+            const staffName = $(this).data('staff');
+            if (confirm(`Are you sure you want to remove ${staffName} from the staff list?`)) {
+                removeStaff(staffName);
+                $('#staffProfileModal').modal('hide');
+            }
+        });
+
+        function removeStaff(staffName) {
+            staff = staff.filter(s => s.name !== staffName);
+            updateStaffDropdowns();
+            updateScheduleAfterStaffRemoval(staffName);
+            alert(`${staffName} has been removed from the staff list.`);
+        }
+
+        function updateScheduleAfterStaffRemoval(staffName) {
+            for (let day = 0; day < scheduleRange.totalDays; day++) {
+                ['morning', 'afternoon', 'night'].forEach(shift => {
+                    schedule[day][shift] = schedule[day][shift].filter(name => name !== staffName);
+                });
+            }
+            updateStats();
+            displaySchedule();
+        }
 
         // Intro.js tour
         const tour = introJs();
@@ -1124,6 +1391,14 @@
                     intro: 'Capture the schedule as an image.'
                 },
                 {
+                    element: '#captureTableBtn',
+                    intro: 'Capture the table structure as HTML.'
+                },
+                {
+                    element: '#addStaffBtn',
+                    intro: 'Add a new staff member to the system.'
+                },
+                {
                     element: '#schedule',
                     intro: 'This is where your generated schedule will appear.'
                 },
@@ -1138,6 +1413,14 @@
         $('#startTourBtn').click(function() {
             tour.start();
         });
+
+        // Initialize the schedule
+        try {
+            initializeSchedule();
+            initializeDatePickers();
+        } catch (error) {
+            handleError(error);
+        }
     });
     </script>
 </body>
